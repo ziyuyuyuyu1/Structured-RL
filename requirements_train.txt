@@ -27,7 +27,7 @@ filelock==3.18.0
 fonttools==4.57.0
 frozenlist==1.6.0
 fsspec==2025.3.0
-gguf==0.10.0
+gguf==0.17.1
 gitdb==4.0.12
 GitPython==3.1.44
 h11==0.16.0
