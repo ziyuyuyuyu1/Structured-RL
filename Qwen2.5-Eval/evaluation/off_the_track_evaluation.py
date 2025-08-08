@@ -109,7 +109,7 @@ def prepare_data(data_name, args):
 
 def setup(args):
     # load model
-    available_gpus = ['0']
+    available_gpus = os.environ['CUDA_VISIBLE_DEVICES'].split(',')
     print(f"Using GPUs: {available_gpus}")
     if args.use_vllm:
         llm = LLM(

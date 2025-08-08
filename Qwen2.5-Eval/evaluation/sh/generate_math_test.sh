@@ -45,6 +45,7 @@ else
         --use_vllm \
         --save_outputs \
         --max_tokens_per_call ${MAX_TOKENS_PER_CALL} \
+        --pipeline_parallel_size 1 \
         --overwrite 
 fi
 

@@ -116,6 +116,7 @@ To run evaluation for 1-shot RLVR with $\pi_1$ on 6 common math reasoning benchm
 ```bash
 conda activate rlvr_eval
 cd Qwen2.5-Eval/evaluation
+export VLLM_WORKER_MULTIPROC_METHOD=spawn
 bash sh/eval_one_experiment_all_ckpts.sh
 ```
 Here for AIME24, AMC23, and AIME25, we evaluate the pass@8 results.
