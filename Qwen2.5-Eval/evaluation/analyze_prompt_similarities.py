@@ -17,6 +17,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+import os
+
 
 def _to_cpu_float(t: Tensor) -> Tensor:
     return t.detach().to(torch.float32).cpu()
@@ -51,6 +53,12 @@ def analyze_prompt_distributions(
     qq_top_pairs: int = 6,
 ) -> None:
     """Analyze similarities between prompt distributions using centroid cosine similarity."""
+
+    if save_prefix is None:
+        # get the directory name
+        save_prefix = os.path.dirname(pt_path)
+        save_prefix = save_prefix + "/"
+
     print(f"Loading embeddings from: {pt_path}")
     data = torch.load(pt_path, map_location="cpu")
     
@@ -113,7 +121,6 @@ def analyze_prompt_distributions(
 
     # Optionally save CSV of similarities
     if save_csv_path:
-        import os
         os.makedirs(os.path.dirname(save_csv_path) or ".", exist_ok=True)
         with open(save_csv_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)

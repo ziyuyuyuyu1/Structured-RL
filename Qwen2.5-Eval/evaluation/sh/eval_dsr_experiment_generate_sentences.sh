@@ -10,7 +10,7 @@ CHECKPOINTS_DIR="/root/One-Shot-RLVR"
 ###### DSR-sub #######
 PROJECT_NAME="verl_few_shot"
 EXPERIMENT_NAME="Qwen2.5-Math-1.5B-dsr_sub"
-GLOBAL_STEP_LIST=($(seq 0 100 100))
+GLOBAL_STEP_LIST=($(seq 0 20 200))
 
 # # Loop through each step in the list
 for GLOBAL_STEP in "${GLOBAL_STEP_LIST[@]}"; do

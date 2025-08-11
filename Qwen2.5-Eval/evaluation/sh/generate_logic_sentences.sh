@@ -9,25 +9,20 @@ OUTPUT_DIR=$4
 SPLIT="test"
 NUM_TEST_SAMPLE=-1
 
-DATA_NAMES="math500"
-IFS=',' read -ra DATASETS <<< "$DATA_NAMES"
 ALL_EXIST=true
 
-for DATASET in "${DATASETS[@]}"; do
-    if [ ! -d "${OUTPUT_DIR}/${DATASET}" ] || [ -z "$(find ${OUTPUT_DIR}/${DATASET} -name '*metrics.json' -print -quit)" ]; then
-        ALL_EXIST=false
-        break
-    fi
-done
+if [ ! -d "${OUTPUT_DIR}" ] || [ -z "$(find ${OUTPUT_DIR} -name '*.jsonl' -print -quit)" ]; then
+    ALL_EXIST=false
+fi
+
 
 if [ "$ALL_EXIST" = true ]; then
-    echo "============ All datasets in ${DATA_NAMES} already evaluated ============="
-    for DATASET in "${DATASETS[@]}"; do
-        METRICS_FILE=$(find ${OUTPUT_DIR}/${DATASET} -name '*metrics.json' -print -quit)
-        echo "============ ${DATASET} ============="
-        cat ${METRICS_FILE}
-    done
+    echo "============ All logic sentences already generated ============="
+    METRICS_FILE=$(find ${OUTPUT_DIR} -name '*.jsonl' -print -quit)
+    echo "============ ${METRICS_FILE} ============="
+    cat ${METRICS_FILE}
 else
+    echo "============ Generating logic sentences ============="
     TOKENIZERS_PARALLELISM=false \
     python3 -u logic_structure_sample_generation.py \
         --model_name_or_path ${MODEL_NAME_OR_PATH} \

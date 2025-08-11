@@ -127,7 +127,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     input_path = args.input
-    output_path = args.output or f"{input_path}.embeddings.pt"
+    if args.output:
+        output_path = args.output
+    else:
+        output_path = f"{os.path.dirname(input_path)}/embeddings.pt"
 
     sentences, sentences_prompt = read_code_sentences_from_jsonl(input_path)
     print(f"Found {len(sentences)} sentences")
