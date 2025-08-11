@@ -1,7 +1,7 @@
 # rm -rf sh/eval_checkpoint_yiping.sh; vim sh/eval_checkpoint_yiping.sh
 PROMPT_TYPE="qwen25-math-cot"
 export CUDA_VISIBLE_DEVICES="4,5,6,7"
-MAX_TOKENS="3072"
+MAX_TOKENS="100"
 
 # CHECKPOINTS_DIR=... # replace with your own path for storing checkpoints
 CHECKPOINTS_DIR="/root/One-Shot-RLVR"
