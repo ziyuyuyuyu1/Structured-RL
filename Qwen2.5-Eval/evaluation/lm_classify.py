@@ -14,6 +14,18 @@ import logging
 from openai import OpenAI
 import torch
 
+# Predefined meanings for mathematical classification
+PREDEFINED_MATHEMATICAL_MEANINGS = [
+    "Nonsense or meaningless statements (no valid logical or mathematical content)",
+    "Statements about factoring a polynomial or equation, including dividing by a factor, identifying a specific linear factor (e.g., $x - 1$), and giving the full factorization into linear factors (listing all roots)",
+    "Verifying that a given value is a root (by substitution or by applying the rational root test)",
+    "Giving the roots of a cubic equation using the cubic formula",
+    "Stating a general property of cubic polynomials (e.g., \"a cubic has three roots\")",
+    "Identifying the coefficients of a given polynomial",
+    "Transforming the equation into a new form, including reciprocal transformation (e.g. dividing through by $x^3$) and change of variables (e.g. $x = y + \\frac{2}{3}$)",
+    "Other meaningful statements not covered above"
+]
+
 
 @dataclass
 class ProcessingResult:
@@ -102,6 +114,7 @@ class LLMSentenceProcessor:
         top_p: float = 0.9,
         max_tokens: int = 512,
         timeout: int = 30,
+        use_fixed_meanings: bool = False,
     ):
         self.api_url = api_url
         self.api_key = api_key
@@ -123,9 +136,10 @@ class LLMSentenceProcessor:
         self.results: List[ProcessingResult] = []
         self.prompt_modifier: Optional[PromptModifier] = None
         
-        # Dynamic meanings management
+        # Meanings management
         self.meanings: List[str] = []
         self.next_meaning_id: int = 0
+        self.use_fixed_meanings: bool = use_fixed_meanings
         
         # Prompt tracking
         self.prompt_to_sentences: Dict[int, List[int]] = {}  # prompt_id -> sentence_indices
@@ -174,31 +188,17 @@ class LLMSentenceProcessor:
     
     def create_dynamic_prompt(self) -> str:
         """Create a prompt with current meanings."""
-        prompt = "You are a semantic classifier.\n\n"
-        prompt += "Currently, I have these logical meanings with example sentences or short definitions:\n"
-        
-        for i, meaning in enumerate(self.meanings):
-            prompt += f"  • Meaning {i}: {meaning}\n"
-        
-        prompt += "\nNow, I will give you a new sentence:\n\n"
-        prompt += '"[Insert new sentence here]"\n\n'
-        prompt += "Your task:\n"
-        prompt += "  • Assign this sentence to one of the existing logical meanings by number (e.g., 'Meaning 2'), based on its general logical content.\n"
-        prompt += "  • If it does not fit any existing meaning, respond with 'Create new meaning' with a brief restatement or label of that meaning.\n"
-        prompt += "  • If the sentence is nonsense or meaningless, respond with 'Meaning 0'.\n"
-        prompt += "  • Small typos or minor errors should not prevent you from understanding the general logical meaning. Focus on the overall logical intent.\n\n"
-        prompt += "Please answer only with:\n"
-        prompt += "  • The meaning number and a brief restatement or label of that meaning, or\n"
-        prompt += "  • 'Create new meaning' with a brief restatement or label of that meaning."
-        
-        return prompt
+        if self.use_fixed_meanings:
+            return create_fixed_classification_prompt(self.meanings)
+        else:
+            return create_classification_prompt(self.meanings)
     
     def parse_response(self, response: str) -> Tuple[Optional[int], Optional[str]]:
         """Parse the LLM response to extract meaning ID and description."""
         response = response.strip()
         
-        # Check for "Create new meaning"
-        if response.lower().startswith("create new meaning"):
+        # Check for "Create new meaning" (only in dynamic mode)
+        if not self.use_fixed_meanings and response.lower().startswith("create new meaning"):
             # Extract the description after "Create new meaning"
             description = response[len("Create new meaning"):].strip()
             if description.startswith(":"):
@@ -216,8 +216,40 @@ class LLMSentenceProcessor:
                 except (ValueError, IndexError):
                     pass
         
-        # Try to extract meaning ID from anywhere in the response
+        # Check for "X: description" format (new format)
         import re
+        number_colon_match = re.match(r'^(\d+)\s*:\s*(.+)$', response.strip())
+        if number_colon_match:
+            try:
+                meaning_id = int(number_colon_match.group(1))
+                description = number_colon_match.group(2).strip()
+                return meaning_id, description
+            except (ValueError, IndexError):
+                pass
+        
+        # Check for "X - description" format
+        number_dash_match = re.match(r'^(\d+)\s*-\s*(.+)$', response.strip())
+        if number_dash_match:
+            try:
+                meaning_id = int(number_dash_match.group(1))
+                description = number_dash_match.group(2).strip()
+                return meaning_id, description
+            except (ValueError, IndexError):
+                pass
+        
+        # Find the first number in the response and use it as meaning ID
+        first_number_match = re.search(r'(\d+)', response)
+        if first_number_match:
+            try:
+                meaning_id = int(first_number_match.group(1))
+                # Extract everything after the first number as description
+                # Remove common separators like :, -, *, etc.
+                description = re.sub(r'^\d+\s*[:\-\*\.\s]*', '', response).strip()
+                return meaning_id, description
+            except (ValueError, IndexError):
+                pass
+        
+        # Try to extract meaning ID from anywhere in the response
         meaning_match = re.search(r'meaning\s+(\d+)', response.lower())
         if meaning_match:
             try:
@@ -229,8 +261,13 @@ class LLMSentenceProcessor:
             except (ValueError, IndexError):
                 pass
         
-        # If we can't parse it, assume it's a new meaning
-        return None, response
+        # If we can't parse it, handle based on mode
+        if self.use_fixed_meanings:
+            # In fixed mode, default to Meaning 0 if we can't parse
+            return 0, "Unable to parse response, defaulting to Meaning 0"
+        else:
+            # In dynamic mode, assume it's a new meaning
+            return None, response
     
     def _generate_response(self, prompt: str) -> str:
         """Generate response using OpenAI client."""
@@ -299,8 +336,8 @@ class LLMSentenceProcessor:
         # Parse response and handle new meanings
         meaning_id, meaning_description = self.parse_response(llm_response)
         
-        # Add new meaning if created
-        if meaning_id is None and meaning_description:
+        # Add new meaning if created (only in dynamic mode)
+        if not self.use_fixed_meanings and meaning_id is None and meaning_description:
             meaning_id = self.add_new_meaning(meaning_description)
         
         # Create result with additional metadata
@@ -520,6 +557,30 @@ def create_classification_prompt(meanings: List[str]) -> str:
     return prompt
 
 
+def create_fixed_classification_prompt(meanings: List[str]) -> str:
+    """Create a classification prompt template with fixed predefined meanings."""
+    prompt = "You are a semantic classifier.\n\n"
+    prompt += "Here is a list of predefined logical meanings:\n"
+    
+    for i, meaning in enumerate(meanings):
+        prompt += f"  • Meaning {i}: {meaning}\n"
+    
+    prompt += (
+        "\nNow, I will give you a new sentence:\n\n"
+        '"[Insert new sentence here]"\n\n'
+        "Your task:\n"
+        "  • Assign this sentence to exactly one of the meanings above, based on its general logical content.\n"
+        "  • If the sentence is nonsense or meaningless, choose Meaning 0.\n"
+        "  • Small typos or minor errors should not prevent you from understanding the intended meaning.\n"
+        "  • You must choose from the meanings listed above — do not invent new categories.\n\n"
+        "Please answer only with:\n"
+        "  • The meaning number, followed by a brief restatement or label of that meaning.\n"
+        # "  • Also write a short explanation of why you chose this meaning."
+    )
+    
+    return prompt
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Process sentences one by one using OpenAI client with gradual prompt modification")
     parser.add_argument("--input", required=True, help="Path to input JSONL file")
@@ -534,10 +595,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=int, default=30, help="API request timeout in seconds")
     parser.add_argument("--start-from", type=int, default=0, help="Start processing from this sentence index")
     parser.add_argument("--max-sentences", type=int, help="Maximum number of sentences to process")
-    parser.add_argument("--meanings", nargs="*", default=["Nonsense or meaningless statements"], 
-                       help="List of meaning definitions")
+    parser.add_argument("--meanings", nargs="*", 
+                       help="List of meaning definitions (defaults to predefined mathematical meanings if --fixed-meanings is used)")
     parser.add_argument("--modifier", choices=["none", "adaptive", "feedback"], default="none",
                        help="Prompt modification strategy")
+    parser.add_argument("--fixed-meanings", action="store_true", 
+                       help="Use fixed predefined meanings instead of dynamic meaning generation")
     parser.add_argument("--test-api", action="store_true", help="Test API connection and exit")
     return parser.parse_args()
 
@@ -555,6 +618,7 @@ def main():
         top_p=args.top_p,
         max_tokens=args.max_tokens,
         timeout=args.timeout,
+        use_fixed_meanings=args.fixed_meanings,
     )
     
     # Test API connection if requested
@@ -578,7 +642,18 @@ def main():
         processor.set_prompt_modifier(FeedbackBasedModifier(feedback_rules=feedback_rules))
     
     # Initialize meanings
-    processor.initialize_meanings(args.meanings)
+    if args.fixed_meanings and not args.meanings:
+        # Use predefined mathematical meanings if fixed mode is enabled and no meanings provided
+        meanings_to_use = PREDEFINED_MATHEMATICAL_MEANINGS
+        print(f"Using predefined mathematical meanings: {len(meanings_to_use)} categories")
+    else:
+        meanings_to_use = args.meanings or ["Nonsense or meaningless statements"]
+    
+    processor.initialize_meanings(meanings_to_use)
+    
+    # Log the mode being used
+    mode = "fixed predefined meanings" if args.fixed_meanings else "dynamic meaning generation"
+    print(f"Running in {mode} mode")
     
     # Define callback for real-time feedback
     def print_result(result: ProcessingResult):
