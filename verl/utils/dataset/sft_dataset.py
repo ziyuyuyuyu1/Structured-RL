@@ -71,10 +71,11 @@ class SFTDataset(Dataset):
             self.parquet_files[i] = copy_local_path_from_hdfs(parquet_file, verbose=True)
 
     def _read_files_and_tokenize(self):
-
         def series_to_item(ls):
-            import pandas, numpy
-            while isinstance(ls, (pandas.core.series.Series, numpy.ndarray)) and len(ls) == 1:
+            import numpy
+            import pandas
+
+            while isinstance(ls, pandas.core.series.Series | numpy.ndarray) and len(ls) == 1:
                 ls = ls[0]
             return ls
 
@@ -85,24 +86,27 @@ class SFTDataset(Dataset):
             dataframes.append(dataframe)
         self.dataframe = pd.concat(dataframes)
         self.prompts = self.dataframe[self.prompt_key]
-        print(self.prompts)
         for key in self.prompt_dict_keys:
             # type(x): pandas.core.series.Series
             # type(x[0]): numpy.ndarray
             # type(x[0][0]): dict
             try:
-                self.prompts = self.prompts.apply(lambda x: series_to_item(x)[key], axis=1)
+                self.prompts = self.prompts.apply(lambda x: series_to_item(x)[key], axis=1)  # noqa: B023
             except Exception:
-                print(f'self.prompts={self.prompts}')
+                print(f"self.prompts={self.prompts}")
                 raise
+        if isinstance(self.prompts, pd.DataFrame):
+            self.prompts = self.prompts.squeeze()
         self.prompts = self.prompts.tolist()
         self.responses = self.dataframe[self.response_key]
         for key in self.response_dict_keys:
             try:
-                self.responses = self.responses.apply(lambda x: series_to_item(x)[key], axis=1)
+                self.responses = self.responses.apply(lambda x: series_to_item(x)[key], axis=1)  # noqa: B023
             except Exception:
-                print(f'self.responses={self.responses}')
+                print(f"self.responses={self.responses}")
                 raise
+        if isinstance(self.responses, pd.DataFrame):
+            self.responses = self.responses.squeeze()
         self.responses = self.responses.tolist()
 
     def __len__(self):
