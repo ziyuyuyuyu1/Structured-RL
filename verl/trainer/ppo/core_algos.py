@@ -224,7 +224,7 @@ def compute_rewards(token_level_scores, old_log_prob, ref_log_prob, kl_ratio):
     return token_level_scores - kl * kl_ratio
 
 
-def compute_policy_loss(old_log_prob, log_prob, advantages, eos_mask, cliprange):
+def compute_policy_loss(old_log_prob, log_prob, advantages, eos_mask, cliprange, use_grpo_prefix_weighting=False):
     """Adapted from https://github.com/huggingface/trl/blob/main/trl/trainer/ppo_trainer.py#L1122
 
     Args:
@@ -238,6 +238,8 @@ def compute_policy_loss(old_log_prob, log_prob, advantages, eos_mask, cliprange)
             shape: (bs, response_length)
         cliprange: (float)
             The clip range used in PPO. See https://arxiv.org/abs/1707.06347
+        use_grpo_prefix_weighting: (bool)
+            Whether to apply GRPO prefix probability weighting (1/π_old(o_{i,<t}|q))
 
     Returns:
         pg_loss: `a scalar torch.Tensor`
@@ -250,8 +252,20 @@ def compute_policy_loss(old_log_prob, log_prob, advantages, eos_mask, cliprange)
     ratio = torch.exp(negative_approx_kl)
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, eos_mask)
 
-    pg_losses = -advantages * ratio
-    pg_losses2 = -advantages * torch.clamp(ratio, 1.0 - cliprange, 1.0 + cliprange)
+    # Apply GRPO prefix probability weighting if enabled
+    if use_grpo_prefix_weighting:
+        # Compute cumulative prefix log probabilities: log π_old(o_{i,<t}|q)
+        # cumsum gives us sum of log probs up to position t, but we want up to position t-1
+        prefix_log_prob = old_log_prob.cumsum(dim=1) - old_log_prob
+        # Convert to probability and take inverse: 1/π_old(o_{i,<t}|q)
+        prefix_weight = torch.exp(-prefix_log_prob) * eos_mask
+        # Apply the weighting to advantages
+        weighted_advantages = advantages * prefix_weight
+    else:
+        weighted_advantages = advantages
+
+    pg_losses = -weighted_advantages * ratio
+    pg_losses2 = -weighted_advantages * torch.clamp(ratio, 1.0 - cliprange, 1.0 + cliprange)
 
     pg_loss = verl_F.masked_mean(torch.max(pg_losses, pg_losses2), eos_mask)
     pg_clipfrac = verl_F.masked_mean(torch.gt(pg_losses2, pg_losses).float(), eos_mask)

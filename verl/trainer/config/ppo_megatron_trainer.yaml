@@ -140,6 +140,7 @@ algorithm:
   lam: 1.0
   adv_estimator: gae
   kl_penalty: kl  # how to estimate kl divergence
+  use_grpo_prefix_weighting: False  # whether to apply GRPO prefix probability weighting
   kl_ctrl:
     type: fixed
     kl_coef: 0.001

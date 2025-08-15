@@ -34,6 +34,7 @@ actor_rollout_ref:
     use_kl_loss: False # True for GRPO
     kl_loss_coef: 0.001 # for grpo
     kl_loss_type: low_var_kl # for grpo
+    use_grpo_prefix_weighting: False  # whether to apply GRPO prefix probability weighting
     ppo_epochs: 1
     shuffle: False
     ulysses_sequence_parallel_size: 1 # sp size
@@ -150,6 +151,7 @@ algorithm:
   lam: 1.0
   adv_estimator: gae
   kl_penalty: kl  # how to estimate kl divergence
+  use_grpo_prefix_weighting: False  # whether to apply GRPO prefix probability weighting
   kl_ctrl:
     type: fixed
     kl_coef: 0.001

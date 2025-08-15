@@ -247,11 +247,15 @@ class DataParallelPPOActor(BasePPOActor):
                 # all return: (bsz, response_length)
                 entropy, log_prob = self._forward_micro_batch(micro_batch=data, temperature=temperature)
 
+                # Get GRPO prefix weighting setting from config
+                use_grpo_prefix_weighting = self.config.get('use_grpo_prefix_weighting', False)
+                
                 pg_loss, pg_clipfrac, ppo_kl = core_algos.compute_policy_loss(old_log_prob=old_log_prob,
                                                                               log_prob=log_prob,
                                                                               advantages=advantages,
                                                                               eos_mask=response_mask,
-                                                                              cliprange=clip_ratio)
+                                                                              cliprange=clip_ratio,
+                                                                              use_grpo_prefix_weighting=use_grpo_prefix_weighting)
                 # compute entropy loss from entropy
                 entropy_loss = verl_F.masked_mean(entropy, response_mask)
 

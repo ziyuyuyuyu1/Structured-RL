@@ -277,11 +277,15 @@ class MegatronPPOActor(BasePPOActor):
             logits = output.logits
             logits = logits[:, -response_length - 1:-1]
             log_prob = vocab_parallel_log_probs_from_logits(logits, responses)
+            # Get GRPO prefix weighting setting from config
+            use_grpo_prefix_weighting = self.config.get('use_grpo_prefix_weighting', False)
+            
             pg_loss, pg_clipfrac, ppo_kl = core_algos.compute_policy_loss(old_log_prob=old_log_prob,
                                                                           log_prob=log_prob,
                                                                           advantages=advantages,
                                                                           eos_mask=response_mask,
-                                                                          cliprange=clip_ratio)
+                                                                          cliprange=clip_ratio,
+                                                                          use_grpo_prefix_weighting=use_grpo_prefix_weighting)
             entropy_loss = vocab_parallel_compute_entropy_loss(logits, eos_mask=response_mask)
             policy_loss = pg_loss - entropy_loss * entropy_coeff
             # return loss and stats
